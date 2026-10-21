@@ -2386,8 +2386,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   moveSpeed: 6
-  walkSpeedFactor: 0.5
-  runSpeedFactor: 0.8
+  walkSpeedFactor: 0.55
+  runSpeedFactor: 1
   groundAcceleration: 12
   airAcceleration: 4
   rotationSpeed: 720
@@ -2409,8 +2409,8 @@ MonoBehaviour:
   crouchHeight: 1.2
   crawlHeight: 0.8
   crawlRadius: 0.4
-  crouchSpeedFactor: 0.6
-  crawlSpeedFactor: 0.3
+  crouchSpeedFactor: 0.35
+  crawlSpeedFactor: 0.18
   jumpVelocity: 5.5
   jumpCutFactor: 0.45
   coyoteTime: 0.12

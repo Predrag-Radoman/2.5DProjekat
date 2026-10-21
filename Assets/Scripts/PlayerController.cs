@@ -14,8 +14,8 @@ public class PlayerController : MonoBehaviour
 {
     [Header("Kretanje")]
     [SerializeField] private float moveSpeed = 6f;
-    [SerializeField] private float walkSpeedFactor = 0.5f;
-    [SerializeField] private float runSpeedFactor = 0.8f;
+    [SerializeField] private float walkSpeedFactor = 0.55f;
+    [SerializeField] private float runSpeedFactor = 1.0f;
     [SerializeField] private float groundAcceleration = 12f;
     [SerializeField] private float airAcceleration = 4f;
     [SerializeField] private float rotationSpeed = 720f;
@@ -43,8 +43,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float crouchHeight = 1.2f;
     [SerializeField] private float crawlHeight = 0.8f;
     [SerializeField] private float crawlRadius = 0.4f;
-    [SerializeField] private float crouchSpeedFactor = 0.6f;
-    [SerializeField] private float crawlSpeedFactor = 0.3f;
+    [SerializeField] private float crouchSpeedFactor = 0.35f;
+    [SerializeField] private float crawlSpeedFactor = 0.18f;
 
     [Header("Skok")]
     [SerializeField] private float jumpVelocity = 5.5f;
@@ -771,10 +771,13 @@ public class PlayerController : MonoBehaviour
 
     private void UpdateGrounded()
     {
-        // sfera na dnu capsule-a + mali cast nadole, bez samo-detekcije (maska bez Player layer-a)
-        float bottomSphereY = CapsuleHeight * 0.5f - CapsuleRadius;
-        Vector3 p = transform.position + Vector3.down * bottomSphereY;
+        // stance-aware: sfera na dnu TRENUTNOG capsule-a (cucanj/puzanje menjaju collider)
+        float r = capsule != null ? capsule.radius : CapsuleRadius;
+        float bottomSphereLocalY = capsule != null
+            ? capsule.center.y - capsule.height * 0.5f + r
+            : -(CapsuleHeight * 0.5f - CapsuleRadius);
+        Vector3 p = transform.position + Vector3.up * bottomSphereLocalY;
         int mask = ~(1 << gameObject.layer);
-        grounded = Physics.CapsuleCast(p, p, CapsuleRadius * 0.9f, Vector3.down, out _, groundCheckDistance, mask);
+        grounded = Physics.CapsuleCast(p, p, r * 0.9f, Vector3.down, out _, groundCheckDistance, mask);
     }
 }
