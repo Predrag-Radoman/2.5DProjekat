@@ -17,6 +17,13 @@ public class ProceduralPlayerAnimator : MonoBehaviour
     [SerializeField] private float bodyBobAmp = 0.06f;
     [SerializeField] private float forwardLeanAmp = 12f;
 
+    [Header("Cucanj / puzanje")]
+    [SerializeField] private float crouchDropAmp = 0.45f;
+    [SerializeField] private float crouchLegBend = 35f;
+    [SerializeField] private float crouchLeanAmp = 28f;
+    [SerializeField] private float crouchArmHold = 20f;
+    [SerializeField] private float crouchSwingScale = 0.5f;
+
     [Header("Air / land")]
     [SerializeField] private float jumpTuckAngle = 32f;
     [SerializeField] private float armRaiseAngle = 42f;
@@ -66,18 +73,23 @@ public class ProceduralPlayerAnimator : MonoBehaviour
 
         if (grounded)
         {
+            bool crouch = controller.IsCrouching;
+            float swingScale = crouch ? crouchSwingScale : 1f;
             walkPhase += speed * walkFrequency * Mathf.PI * 2f * Time.deltaTime;
             float sin = Mathf.Sin(walkPhase);
-            float swing = sin * legSwingAmp * speed;
+            float swing = sin * legSwingAmp * speed * swingScale;
+            float bend = crouch ? crouchLegBend : 0f;
+            float armHold = crouch ? crouchArmHold : 0f;
 
-            if (legL != null) legL.localRotation = Quaternion.Euler(swing, 0f, 0f);
-            if (legR != null) legR.localRotation = Quaternion.Euler(-swing, 0f, 0f);
-            if (armL != null) armL.localRotation = Quaternion.Euler(-swing * armSwingRatio, 0f, 0f);
-            if (armR != null) armR.localRotation = Quaternion.Euler(swing * armSwingRatio, 0f, 0f);
+            if (legL != null) legL.localRotation = Quaternion.Euler(bend + swing, 0f, 0f);
+            if (legR != null) legR.localRotation = Quaternion.Euler(bend - swing, 0f, 0f);
+            if (armL != null) armL.localRotation = Quaternion.Euler(armHold - swing * armSwingRatio, 0f, 0f);
+            if (armR != null) armR.localRotation = Quaternion.Euler(armHold + swing * armSwingRatio, 0f, 0f);
 
-            float bob = Mathf.Abs(sin) * bodyBobAmp * speed;
-            float lean = speed * forwardLeanAmp;
-            hips.localPosition = baseHipsPos + Vector3.up * bob - CrouchOffset();
+            float bob = Mathf.Abs(sin) * bodyBobAmp * speed * swingScale;
+            float lean = crouch ? crouchLeanAmp : speed * forwardLeanAmp;
+            float drop = crouch ? crouchDropAmp : 0f;
+            hips.localPosition = baseHipsPos + Vector3.up * (bob - drop) - CrouchOffset();
             if (body != null) body.localRotation = Quaternion.Euler(lean, 0f, 0f);
             if (head != null) head.localRotation = Quaternion.Euler(-lean * 0.6f, 0f, 0f);
 

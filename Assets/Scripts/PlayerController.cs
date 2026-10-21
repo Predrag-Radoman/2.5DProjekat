@@ -27,6 +27,10 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float dashCooldown = 0.55f;
     [SerializeField] private float depthSpeedFactor = 0.55f;
 
+    [Header("Cucanj / puzanje")]
+    [SerializeField] private float crouchHeight = 1.2f;
+    [SerializeField] private float crawlSpeedFactor = 0.4f;
+
     [Header("Skok")]
     [SerializeField] private float jumpVelocity = 5.5f;
     [SerializeField] private float jumpCutFactor = 0.45f;
@@ -40,10 +44,13 @@ public class PlayerController : MonoBehaviour
     public event System.Action OnLanded;
     /// <summary>Dodge step / dash (za SFX, VFX).</summary>
     public event System.Action OnDashed;
+    /// <summary>Promena cucnja (za SFX, VFX, Animator).</summary>
+    public event System.Action<bool> OnCrouchChanged;
 
     public bool IsGrounded => grounded;
     public float VerticalVelocity => rb != null ? rb.linearVelocity.y : 0f;
     public float MaxMoveSpeed => moveSpeed;
+    public bool IsCrouching => crouching;
     public Vector3 HorizontalVelocity => rb != null
         ? new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z)
         : Vector3.zero;
@@ -60,6 +67,12 @@ public class PlayerController : MonoBehaviour
     private float lastDashTime = -1f;
     private Vector3 dashDir = Vector3.forward;
     private InputAction dashAction;
+    private InputAction crouchAction;
+    private bool crouchHeld;
+    private bool crouching;
+    private CapsuleCollider capsule;
+    private float standingHeight = 2f;
+    private float feetLocalY = -1f;
     private float lastGroundedTime = -1f;
     private float jumpBufferedTime = -1f;
 
@@ -87,6 +100,17 @@ public class PlayerController : MonoBehaviour
 
         dashAction = new InputAction("Dash", binding: "<Keyboard>/leftShift");
         dashAction.AddBinding("<Gamepad>/buttonWest");
+
+        crouchAction = new InputAction("Crouch", binding: "<Keyboard>/leftCtrl");
+        crouchAction.AddBinding("<Keyboard>/c");
+        crouchAction.AddBinding("<Gamepad>/buttonNorth");
+
+        capsule = GetComponent<CapsuleCollider>();
+        if (capsule != null)
+        {
+            standingHeight = capsule.height;
+            feetLocalY = capsule.center.y - capsule.height * 0.5f;
+        }
     }
 
     private void OnEnable()
@@ -94,9 +118,12 @@ public class PlayerController : MonoBehaviour
         moveAction.Enable();
         jumpAction.Enable();
         dashAction.Enable();
+        crouchAction.Enable();
         jumpAction.performed += OnJumpPerformed;
         jumpAction.canceled += OnJumpCanceled;
         dashAction.performed += OnDashPerformed;
+        crouchAction.performed += OnCrouchPerformed;
+        crouchAction.canceled += OnCrouchCanceled;
     }
 
     private void OnDisable()
@@ -104,9 +131,12 @@ public class PlayerController : MonoBehaviour
         jumpAction.performed -= OnJumpPerformed;
         jumpAction.canceled -= OnJumpCanceled;
         dashAction.performed -= OnDashPerformed;
+        crouchAction.performed -= OnCrouchPerformed;
+        crouchAction.canceled -= OnCrouchCanceled;
         moveAction.Disable();
         jumpAction.Disable();
         dashAction.Disable();
+        crouchAction.Disable();
     }
 
     private void OnJumpPerformed(InputAction.CallbackContext ctx)
@@ -138,12 +168,44 @@ public class PlayerController : MonoBehaviour
         OnDashed?.Invoke();
     }
 
+    private void OnCrouchPerformed(InputAction.CallbackContext ctx) => crouchHeld = true;
+    private void OnCrouchCanceled(InputAction.CallbackContext ctx) => crouchHeld = false;
+
+    private void UpdateCrouch()
+    {
+        bool want = crouchHeld && grounded;
+        if (want == crouching) return;
+        if (!want && !HeadroomClear()) return;   // ne moze da ustane pod preprekom
+        crouching = want;
+        ApplyCapsuleHeight();
+        OnCrouchChanged?.Invoke(crouching);
+    }
+
+    private void ApplyCapsuleHeight()
+    {
+        if (capsule == null) return;
+        float h = crouching ? crouchHeight : standingHeight;
+        capsule.height = h;
+        capsule.center = new Vector3(0f, feetLocalY + h * 0.5f, 0f);
+    }
+
+    private bool HeadroomClear()
+    {
+        if (capsule == null) return true;
+        float delta = standingHeight - crouchHeight;
+        if (delta <= 0f) return true;
+        float topY = transform.position.y + feetLocalY + crouchHeight - capsule.radius;
+        Vector3 p = new Vector3(transform.position.x, topY, transform.position.z);
+        return !Physics.SphereCast(p, capsule.radius * 0.9f, Vector3.up, out _, delta + 0.05f, ~(1 << gameObject.layer));
+    }
+
     private void FixedUpdate()
     {
         UpdateGrounded();
         if (grounded) lastGroundedTime = Time.time;
         if (grounded && !wasGrounded) OnLanded?.Invoke();
         wasGrounded = grounded;
+        UpdateCrouch();
 
         Vector2 moveInput = moveAction.ReadValue<Vector2>();
         // 2.5D mapiranje: X input -> sveta X, Y input -> sveta Z (dubina koridora,
@@ -154,7 +216,8 @@ public class PlayerController : MonoBehaviour
 
         Vector3 velocity = rb.linearVelocity;
         Vector3 horizontal = new Vector3(velocity.x, 0f, velocity.z);
-        float speedRatio = Mathf.Clamp01(horizontal.magnitude / Mathf.Max(0.001f, moveSpeed));
+        float effSpeed = moveSpeed * (crouching ? crawlSpeedFactor : 1f);
+        float speedRatio = Mathf.Clamp01(horizontal.magnitude / Mathf.Max(0.001f, effSpeed));
 
         if (dashTimer > 0f)
         {
@@ -178,7 +241,7 @@ public class PlayerController : MonoBehaviour
                 accel = grounded ? groundFriction : airAcceleration * 0.5f;
             }
             float t = 1f - Mathf.Exp(-accel * Time.fixedDeltaTime);
-            Vector3 targetHorizontal = wish * moveSpeed;
+            Vector3 targetHorizontal = wish * effSpeed;
             horizontal = Vector3.Lerp(horizontal, targetHorizontal, t);
         }
 
@@ -189,7 +252,7 @@ public class PlayerController : MonoBehaviour
         newVelocity.y += Physics.gravity.y * (gMult - 1f) * Time.fixedDeltaTime;
 
         // coyote time + jump buffer = osecaj kontrole
-        bool canJump = Time.time - lastGroundedTime <= coyoteTime;
+        bool canJump = Time.time - lastGroundedTime <= coyoteTime && !crouching;
         bool wantsJump = Time.time - jumpBufferedTime <= jumpBufferTime;
         if (canJump && wantsJump)
         {
@@ -201,8 +264,9 @@ public class PlayerController : MonoBehaviour
 
         rb.linearVelocity = newVelocity;
 
-        // okretanje modela u smeru kretanja
-        if (wish.sqrMagnitude > 0.01f)
+        // okretanje modela u smeru kretanja — SAMO na tlu:
+        // realno, u vazduhu facing je zakljucan (ne moze da se okrene u letu)
+        if (grounded && wish.sqrMagnitude > 0.01f)
         {
             Quaternion targetRot = Quaternion.LookRotation(wish);
             transform.rotation = Quaternion.RotateTowards(

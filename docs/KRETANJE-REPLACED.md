@@ -29,3 +29,13 @@ fluidan, "težak ali responsivan" movement sa momentum-om i akrobatskim detaljim
 Dodatno: `OnDashed` event (za SFX/VFX dash-a), dash input LeftShift / gamepad West.
 
 Sve vrednosti su Inspector-tunable — fine-tune po osecaju bez koda.
+
+## Dodato: air rotation lock + cucanj/puzanje
+
+- **Air rotation lock:** rotacija modela samo na tlu — u vazduhu facing zakljucan
+  (realno: ne moze da se okrene u letu).
+- **Cucanj:** Ctrl / C / gamepad North — rig se spusta (hips drop, noge savijene,
+  telo nagnuto, ruke drze), collider visina se smanjuje (headroom provera:
+  ne ustaje pod preprekom). Skok nije dozvoljen u cucnju.
+- **Puzanje:** kretanje u cucnju = 0.4x brzina, sporiji i nizi walk cycle
+  (crouchSwingScale) — stealth/koridor feel.
