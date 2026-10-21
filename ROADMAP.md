@@ -19,17 +19,17 @@ Oznake: **[TI]** = tvoj rad (art/rig/animacije), **[JA]** = moj rad (kod/sistemi
 - [ ] Animation events u klipovima: `FootstepL`, `FootstepR`, `Land`
 - [ ] FBX export po konvenciji iz `docs/ANIMACIJE.md` (folder, scale, imena)
 **[JA]**
-- [ ] `docs/ANIMACIJE.md` — konvencije import-a pre nego što kreneš sa export-om
-- [ ] Animator Controller: parametri `Speed`, `VerticalVel`, `Grounded`; blend tree Idle/Walk/Run; state-ovi Jump/Fall/Land
-- [ ] `PlayerAnimator` most: PlayerController → Animator parametri; animation events → SFX/efekti
+- [x] `docs/ANIMACIJE.md` — konvencije import-a (uradjeno paralelno, pre art-a)
+- [x] Animator Controller: parametri + blend tree + Jump/Fall state-ovi (Land čeka klip)
+- [x] `PlayerAnimator` most: PlayerController → Animator parametri
 - [ ] Zamena capsule vizuala modelom (collider i controller ostaju autoritativni)
 
 ## Faza 2 — Game feel
-- [ ] Variable jump height (jump-cut na pustanje dugmeta) — najveći feel-upgrade za najmanje koda
-- [ ] Camera look-ahead u smeru kretanja + blagi kick pri punoj brzini
+- [x] Variable jump height (jump-cut na pustanje dugmeta) — uradjeno paralelno
+- [x] Camera look-ahead u smeru kretanja — uradjeno paralelno (kick pri punoj brzini za polish)
 - [ ] Landing: dust particles (URP VFX), SFX, mini camera shake
 - [ ] Footstep SFX sinhronizovani animation events-ima
-- [ ] `AudioManager`: SFX + muzika, pool-ovanje, glasnoće u Settings
+- [x] `AudioManager` skeleton: pool + event wiring (glasnoće u Settings za polish)
 
 ## Faza 3 — Gameplay jezgro (TAČKA ODLUKE O ŽANRU)
 - [ ] **[ZAJEDNO]** odluka: borba (combo sistem) ILI čisto platformiranje/puzzles ILI kolekcionarski score
