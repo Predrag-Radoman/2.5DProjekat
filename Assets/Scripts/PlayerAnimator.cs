@@ -23,6 +23,9 @@ public class PlayerAnimator : MonoBehaviour
         animator = GetComponent<Animator>();
         controller = GetComponent<PlayerController>();
         controller.OnJumped += () => animator.SetTrigger(JumpHash);
+
+        if (GetComponent<ProceduralPlayerAnimator>() == null)
+            gameObject.AddComponent<ProceduralPlayerAnimator>();
     }
 
     private void Update()

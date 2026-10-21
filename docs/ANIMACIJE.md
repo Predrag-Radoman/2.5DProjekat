@@ -59,3 +59,17 @@ Kad stignu klipovi: samo se m_Motion slotovi popune (ja to uradim), prelazi osta
 - [ ] Loop flag: Idle/Walk/Run = loop, ostali ne
 - [ ] Nema root motion key-eva
 - [ ] FBX-ovi u `Assets/Art/Characters/Player/`, pa `git add` + push
+
+## 7. Placeholder rig (proceduralni, dok FBX ne stigne)
+
+Stilizovani humanoid od primitiva (telo, glava, noge, ruke sa pivotima) gradi se:
+- u editoru: **Tools > Build Placeholder Rig**, ili
+- automatski u runtime-u: `ProceduralPlayerAnimator` ga gradi sam ako nedostaje
+  (`PlayerAnimator` bootstrap-uje komponentu na Player-u — bez ijedne scene izmene).
+
+Animacije su code-driven (`ProceduralPlayerAnimator`): idle bob, walk cycle
+(noge/ruke swing + body bob + forward lean), jump tuck, land squash + crouch.
+Zvuci su proceduralni (`ProceduralAudio`): footstep L/R + land generisani u runtime-u.
+
+Kad pravi Blender FBX stigne: placeholder rig se uklanja, Animator klipovi se
+upisuju u postojeći `PlayerAnimatorController` (motion slotovi već čekaju).
