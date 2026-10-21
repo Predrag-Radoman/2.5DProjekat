@@ -39,7 +39,7 @@ public class AudioManager : MonoBehaviour
         musicSource = CreateSource("Music");
         musicSource.loop = true;
 
-        var pc = FindFirstObjectByType<PlayerController>();
+        var pc = FindAnyObjectByType<PlayerController>();
         if (pc != null)
         {
             pc.OnJumped += () => PlaySFX(jumpClip);

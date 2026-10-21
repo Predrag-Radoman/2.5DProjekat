@@ -13,8 +13,8 @@ public static class PlaceholderRigBuilder
     [MenuItem("Tools/Build Placeholder Rig")]
     public static void Build()
     {
-        GameObject player = GameObject.FindWithTag("Player");
-        if (player == null) player = GameObject.Find("Player");
+        var controller = Object.FindAnyObjectByType<PlayerController>();
+        GameObject player = controller != null ? controller.gameObject : GameObject.Find("Player");
         if (player == null)
         {
             Debug.LogError("PlaceholderRigBuilder: Player objekat nije nadjen.");
