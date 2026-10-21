@@ -5,6 +5,7 @@ using UnityEngine.InputSystem;
 /// 2.5D player controller (belt-scroller stil):
 /// kretanje po X osi + dubina po Z osi (koridor), skok po Y osi.
 /// Input: WASD / strelice / gamepad left stick; skok: Space / gamepad South.
+/// Variable jump height: pustanje dugmeta u usponu sece skok (jump-cut).
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerController : MonoBehaviour
@@ -17,15 +18,31 @@ public class PlayerController : MonoBehaviour
 
     [Header("Skok")]
     [SerializeField] private float jumpVelocity = 5.5f;
+    [SerializeField] private float jumpCutFactor = 0.45f;
     [SerializeField] private float coyoteTime = 0.12f;
     [SerializeField] private float jumpBufferTime = 0.15f;
     [SerializeField] private float groundCheckDistance = 0.15f;
+
+    /// <summary>Dogodjenaj skoka (za SFX, VFX, Animator trigger).</summary>
+    public event System.Action OnJumped;
+    /// <summary>Doskok (za SFX, VFX, kasnije Land animaciju).</summary>
+    public event System.Action OnLanded;
+
+    public bool IsGrounded => grounded;
+    public float VerticalVelocity => rb != null ? rb.linearVelocity.y : 0f;
+    public float MaxMoveSpeed => moveSpeed;
+    public Vector3 HorizontalVelocity => rb != null
+        ? new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z)
+        : Vector3.zero;
+    /// <summary>0 = stoji, 1 = puna brzina.</summary>
+    public float NormalizedHorizontalSpeed => Mathf.Clamp01(HorizontalVelocity.magnitude / Mathf.Max(0.001f, moveSpeed));
 
     private Rigidbody rb;
     private InputAction moveAction;
     private InputAction jumpAction;
 
     private bool grounded;
+    private bool wasGrounded = true;
     private float lastGroundedTime = -1f;
     private float jumpBufferedTime = -1f;
 
@@ -57,11 +74,13 @@ public class PlayerController : MonoBehaviour
         moveAction.Enable();
         jumpAction.Enable();
         jumpAction.performed += OnJumpPerformed;
+        jumpAction.canceled += OnJumpCanceled;
     }
 
     private void OnDisable()
     {
         jumpAction.performed -= OnJumpPerformed;
+        jumpAction.canceled -= OnJumpCanceled;
         moveAction.Disable();
         jumpAction.Disable();
     }
@@ -71,10 +90,23 @@ public class PlayerController : MonoBehaviour
         jumpBufferedTime = Time.time;
     }
 
+    /// <summary>Variable jump height: pustis dugme u usponu -> skok se sece.</summary>
+    private void OnJumpCanceled(InputAction.CallbackContext ctx)
+    {
+        if (rb.linearVelocity.y > 0f)
+        {
+            Vector3 v = rb.linearVelocity;
+            v.y *= jumpCutFactor;
+            rb.linearVelocity = v;
+        }
+    }
+
     private void FixedUpdate()
     {
         UpdateGrounded();
         if (grounded) lastGroundedTime = Time.time;
+        if (grounded && !wasGrounded) OnLanded?.Invoke();
+        wasGrounded = grounded;
 
         Vector2 moveInput = moveAction.ReadValue<Vector2>();
         // 2.5D mapiranje: X input -> sveta X, Y input -> sveta Z (dubina koridora)
@@ -97,6 +129,7 @@ public class PlayerController : MonoBehaviour
             newVelocity.y = jumpVelocity;
             lastGroundedTime = -1f;
             jumpBufferedTime = -1f;
+            OnJumped?.Invoke();
         }
 
         rb.linearVelocity = newVelocity;
