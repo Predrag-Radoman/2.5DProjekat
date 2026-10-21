@@ -142,7 +142,18 @@ public class ProceduralPlayerAnimator : MonoBehaviour
         GameObject rig = new GameObject("PlaceholderRig");
         rig.transform.SetParent(player.transform, false);
 
-        GameObject hips = Part("Hips", rig.transform, new Vector3(0f, 0.95f, 0f));
+        // Player-ov origin je na CENTRU capsule-a -> racunamo local Y stopala
+        // da rig ne bi lebdela (offseti delova su od stopala)
+        float feetLocalY = -1f;
+        Collider col = player.GetComponent<Collider>();
+        if (col is CapsuleCollider cc) feetLocalY = cc.center.y - cc.height * 0.5f;
+        else if (col != null) feetLocalY = -col.bounds.extents.y;
+
+        GameObject hips = Part("Hips", rig.transform, new Vector3(0f, feetLocalY + 0.95f, 0f));
+
+        // sakrij Player-ov sopstveni capsule mesh (rig preuzima vizuel)
+        Renderer own = player.GetComponent<Renderer>();
+        if (own != null) own.enabled = false;
         Prim("Body", PrimitiveType.Capsule, hips.transform, new Vector3(0f, 0.35f, 0f),
             new Vector3(0.62f, 0.42f, 0.38f), new Color(0.20f, 0.55f, 0.60f));
         Prim("Head", PrimitiveType.Sphere, hips.transform, new Vector3(0f, 0.82f, 0f),
@@ -165,6 +176,14 @@ public class ProceduralPlayerAnimator : MonoBehaviour
         return rig.transform;
     }
 
+    private static Shader PickShader()
+    {
+        Shader sh = Shader.Find("Universal Render Pipeline/Lit");
+        if (sh == null) sh = Shader.Find("Standard");
+        if (sh == null) sh = Shader.Find("Diffuse");
+        return sh;
+    }
+
     private static GameObject Part(string name, Transform parent, Vector3 localPos)
     {
         GameObject go = new GameObject(name);
@@ -181,7 +200,7 @@ public class ProceduralPlayerAnimator : MonoBehaviour
         go.transform.SetParent(parent, false);
         go.transform.localPosition = localPos;
         go.transform.localScale = scale;
-        go.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("Standard")) { color = color };
+        go.GetComponent<Renderer>().sharedMaterial = new Material(PickShader()) { color = color };
         return go;
     }
 }
