@@ -47,6 +47,35 @@ public class ProceduralPlayerAnimator : MonoBehaviour
     [SerializeField] private float hangShimmySway = 10f;
     [SerializeField] private float mantleLegTuck = 45f;
 
+    [Header("Sapletanje / pad")]
+    [SerializeField] private float tripStuckPitch = 18f;
+    [SerializeField] private float tripStuckDrop = 0.12f;
+    [SerializeField] private float tripStuckArm = 45f;
+    [SerializeField] private float tripStuckLegBend = 22f;
+    [SerializeField] private float tripStuckLean = 10f;
+    [SerializeField] private float tripPitch = 88f;
+    [SerializeField] private float tripHipsDrop = 0.68f;
+    [SerializeField] private float tripArmReach = 100f;
+
+    [Header("Prekoracenje (vault)")]
+    [SerializeField] private float vaultPlantLean = 26f;
+    [SerializeField] private float vaultPlantArm = 65f;
+    [SerializeField] private float vaultPlantLeg = 20f;
+    [SerializeField] private float vaultOverPitch = 52f;
+    [SerializeField] private float vaultOverDrop = 0.22f;
+    [SerializeField] private float vaultOverArm = 85f;
+    [SerializeField] private float vaultLegTuck = 55f;
+    [SerializeField] private float vaultLandCrouch = 0.16f;
+
+    [Header("Prekoracenje malih prepreka (step-over)")]
+    [SerializeField] private float stepOverLean = 8f;
+    [SerializeField] private float stepOverPitch = 5f;
+    [SerializeField] private float stepOverDrop = 0.04f;
+    [SerializeField] private float stepOverArm = 16f;
+    [SerializeField] private float stepOverLeadLeg = 34f;
+    [SerializeField] private float stepOverTrailLeg = 10f;
+    [SerializeField] private float stepOverCrouch = 0.03f;
+
     private PlayerController controller;
     private ProceduralAudio audio;
 
@@ -84,6 +113,23 @@ public class ProceduralPlayerAnimator : MonoBehaviour
     private void Update()
     {
         if (hips == null) return;
+
+        if (controller.IsTripping)
+        {
+            UpdateTripPose();
+            ApplySquash(0f);
+            return;
+        }
+
+        if (controller.IsVaulting)
+        {
+            if (controller.IsSteppingOver)
+                UpdateStepOverPose();
+            else
+                UpdateVaultPose();
+            ApplySquash(0f);
+            return;
+        }
 
         if (controller.IsLedgeHanging || controller.IsMantling)
         {
@@ -192,6 +238,188 @@ public class ProceduralPlayerAnimator : MonoBehaviour
         hips.localPosition = baseHipsPos;
         if (body != null) body.localRotation = Quaternion.Euler(-12f * kick, 0f, 0f);
         if (head != null) head.localRotation = Quaternion.Euler(8f * kick, 0f, 0f);
+    }
+
+    private void UpdateTripPose()
+    {
+        float t = Mathf.Clamp01(controller.TripPhaseProgress);
+        float pitch = 0f;
+        float drop = 0f;
+        float arm = 0f;
+        float leg = 0f;
+        float lean = 0f;
+        float headPitch = 0f;
+
+        switch (controller.CurrentTripPhase)
+        {
+            case PlayerController.TripPhase.Stuck:
+                pitch = tripStuckPitch;
+                drop = tripStuckDrop;
+                arm = -tripStuckArm;
+                leg = tripStuckLegBend;
+                lean = tripStuckLean;
+                headPitch = -8f;
+                break;
+
+            case PlayerController.TripPhase.Falling:
+                float fall = Mathf.SmoothStep(0f, 1f, t);
+                pitch = Mathf.Lerp(tripStuckPitch, tripPitch, fall);
+                drop = Mathf.Lerp(tripStuckDrop, tripHipsDrop, fall);
+                arm = Mathf.Lerp(-tripStuckArm, -tripArmReach, fall);
+                leg = Mathf.Lerp(tripStuckLegBend, 0f, fall);
+                lean = Mathf.Lerp(tripStuckLean, 0f, fall);
+                headPitch = -8f;
+                break;
+
+            case PlayerController.TripPhase.Lying:
+                pitch = tripPitch;
+                drop = tripHipsDrop + Mathf.Sin(Time.time * 3f) * 0.005f;
+                arm = -tripArmReach;
+                headPitch = -12f;
+                break;
+
+            case PlayerController.TripPhase.GettingUp:
+                float rise = Mathf.SmoothStep(0f, 1f, t);
+                pitch = Mathf.Lerp(tripPitch, 0f, rise);
+                drop = Mathf.Lerp(tripHipsDrop, 0f, rise);
+                arm = Mathf.Lerp(-tripArmReach, 0f, rise);
+                headPitch = Mathf.Lerp(-12f, 0f, rise);
+                break;
+
+            default:
+                return;
+        }
+
+        hips.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        hips.localPosition = baseHipsPos - Vector3.up * drop;
+        if (body != null) body.localRotation = Quaternion.Euler(lean, 0f, 0f);
+        if (head != null) head.localRotation = Quaternion.Euler(headPitch, 0f, 0f);
+        if (legL != null) legL.localRotation = Quaternion.Euler(leg, 0f, 0f);
+        if (legR != null) legR.localRotation = Quaternion.Euler(leg + 4f, 0f, 0f);
+        if (armL != null) armL.localRotation = Quaternion.Euler(arm, 0f, 0f);
+        if (armR != null) armR.localRotation = Quaternion.Euler(arm, 0f, 0f);
+
+        if (controller.CurrentTripPhase == PlayerController.TripPhase.Stuck)
+        {
+            if (legL != null) legL.localRotation = Quaternion.Euler(leg + 14f, 0f, 0f);
+            if (legR != null) legR.localRotation = Quaternion.Euler(leg - 8f, 0f, 0f);
+            if (armL != null) armL.localRotation = Quaternion.Euler(arm - 12f, 0f, 0f);
+            if (armR != null) armR.localRotation = Quaternion.Euler(arm + 18f, 0f, 0f);
+        }
+    }
+
+    private void UpdateStepOverPose()
+    {
+        float t = Mathf.Clamp01(controller.VaultPhaseProgress);
+        float lean = 0f;
+        float pitch = 0f;
+        float drop = 0f;
+        float arm = 0f;
+        float leadLeg = 0f;
+        float trailLeg = 0f;
+        float headPitch = 0f;
+
+        switch (controller.CurrentVaultPhase)
+        {
+            case PlayerController.VaultPhase.Plant:
+                lean = 3f;
+                pitch = 2f;
+                drop = 0.02f;
+                arm = -8f;
+                leadLeg = 12f;
+                trailLeg = 2f;
+                headPitch = -2f;
+                break;
+
+            case PlayerController.VaultPhase.Over:
+                float over = Mathf.SmoothStep(0f, 1f, t);
+                lean = Mathf.Lerp(3f, stepOverLean, over);
+                pitch = Mathf.Lerp(2f, stepOverPitch, over);
+                drop = Mathf.Lerp(0.02f, stepOverDrop, over);
+                arm = Mathf.Lerp(-8f, -stepOverArm, over);
+                leadLeg = Mathf.Lerp(12f, stepOverLeadLeg, over);
+                trailLeg = Mathf.Lerp(2f, stepOverTrailLeg, over);
+                headPitch = -2f;
+                break;
+
+            case PlayerController.VaultPhase.Land:
+                float land = Mathf.SmoothStep(0f, 1f, t);
+                lean = Mathf.Lerp(stepOverLean, 0f, land);
+                pitch = Mathf.Lerp(stepOverPitch, 0f, land);
+                drop = Mathf.Lerp(stepOverDrop, stepOverCrouch, land);
+                arm = Mathf.Lerp(-stepOverArm, 0f, land);
+                leadLeg = Mathf.Lerp(stepOverLeadLeg, 4f, land);
+                trailLeg = Mathf.Lerp(stepOverTrailLeg, 0f, land);
+                headPitch = Mathf.Lerp(-2f, 0f, land);
+                break;
+
+            default:
+                return;
+        }
+
+        hips.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        hips.localPosition = baseHipsPos - Vector3.up * drop;
+        if (body != null) body.localRotation = Quaternion.Euler(lean, 0f, 0f);
+        if (head != null) head.localRotation = Quaternion.Euler(headPitch, 0f, 0f);
+        if (legL != null) legL.localRotation = Quaternion.Euler(leadLeg, 0f, 0f);
+        if (legR != null) legR.localRotation = Quaternion.Euler(trailLeg, 0f, 0f);
+        if (armL != null) armL.localRotation = Quaternion.Euler(arm - 4f, 0f, 0f);
+        if (armR != null) armR.localRotation = Quaternion.Euler(arm + 5f, 0f, 0f);
+    }
+
+    private void UpdateVaultPose()
+    {
+        float t = Mathf.Clamp01(controller.VaultPhaseProgress);
+        float pitch = 0f;
+        float drop = 0f;
+        float arm = 0f;
+        float leg = 0f;
+        float lean = 0f;
+        float headPitch = 0f;
+
+        switch (controller.CurrentVaultPhase)
+        {
+            case PlayerController.VaultPhase.Plant:
+                pitch = 8f;
+                drop = 0.05f;
+                arm = -vaultPlantArm;
+                leg = vaultPlantLeg;
+                lean = vaultPlantLean;
+                headPitch = -10f;
+                break;
+
+            case PlayerController.VaultPhase.Over:
+                float over = Mathf.SmoothStep(0f, 1f, t);
+                pitch = Mathf.Lerp(8f, vaultOverPitch, over);
+                drop = Mathf.Lerp(0.05f, vaultOverDrop, over);
+                arm = Mathf.Lerp(-vaultPlantArm, -vaultOverArm, over);
+                leg = Mathf.Lerp(vaultPlantLeg, vaultLegTuck, over);
+                lean = Mathf.Lerp(vaultPlantLean, 8f, over);
+                headPitch = -10f;
+                break;
+
+            case PlayerController.VaultPhase.Land:
+                float land = Mathf.SmoothStep(0f, 1f, t);
+                pitch = Mathf.Lerp(vaultOverPitch, 0f, land);
+                drop = Mathf.Lerp(vaultOverDrop, vaultLandCrouch, land);
+                arm = Mathf.Lerp(-vaultOverArm, 0f, land);
+                leg = Mathf.Lerp(vaultLegTuck, 8f, land);
+                lean = Mathf.Lerp(8f, 0f, land);
+                headPitch = Mathf.Lerp(-10f, 0f, land);
+                break;
+
+            default:
+                return;
+        }
+
+        hips.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        hips.localPosition = baseHipsPos - Vector3.up * drop;
+        if (body != null) body.localRotation = Quaternion.Euler(lean, 0f, 0f);
+        if (head != null) head.localRotation = Quaternion.Euler(headPitch, 0f, 0f);
+        if (legL != null) legL.localRotation = Quaternion.Euler(leg, 0f, 0f);
+        if (legR != null) legR.localRotation = Quaternion.Euler(leg + 6f, 0f, 0f);
+        if (armL != null) armL.localRotation = Quaternion.Euler(arm - 10f, 0f, 0f);
+        if (armR != null) armR.localRotation = Quaternion.Euler(arm + 12f, 0f, 0f);
     }
 
     /// <summary>Prone crawl: telo horizontalno, noge ispruzene, ruke naizmenicno vuku.</summary>

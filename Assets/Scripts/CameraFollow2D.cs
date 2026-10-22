@@ -17,8 +17,8 @@ public class CameraFollow2D : MonoBehaviour
 
     [Header("Granice levela (kamera staje na ivicama)")]
     [SerializeField] private bool clampX = true;
-    [SerializeField] private float minX = -5f;
-    [SerializeField] private float maxX = 5f;
+    [SerializeField] private float minX = -8f;
+    [SerializeField] private float maxX = 20f;
 
     private PlayerController playerController;
     private Vector3 velocity;

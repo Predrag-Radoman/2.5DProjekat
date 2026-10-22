@@ -74,6 +74,39 @@ Tuning (Inspector, header "Ledge grab"): `ledgeGrabReach`, `ledgeGrabMinHeight` 
 `mantleInset`,
 `ledgeRegrabDelay`.
 
+## Sapletanje preko niske prepreke
+
+- **Trigger:** trcanje (Shift) u nisku prepreku cija je gornja ivica 0.2–0.9 m
+  iznad stopala; brzina >= 4 m/s. Hodanje, skok i pad ne triggeruju.
+- **Faze:** zaglavi 0.25 s -> pad preko prepreke 0.35 s -> lezi 0.6 s -> ustaje
+  0.55 s (ukupno ~1.75 s, automatski).
+- **Pad na drugu stranu:** lik se u luku prebaci preko prepreke (forward + hop),
+  padne i ostane da lezi na suprotnoj strani, pa ustane tamo.
+- **Tokom:** input je zakljucan, trcanje se prekida, capsule se privremeno
+  spusta na crawl visinu; posle ustajanja vraca se stajanje i cooldown 0.7 s.
+- Tuning: `tripEnabled`, `tripMinObstacleHeight`, `tripMaxObstacleHeight`,
+  `tripMinSpeed`, `tripStuckTime`, `tripFallTime`, `tripLieTime`,
+  `tripGetUpTime`, `tripCooldown`, `tripHopHeight`, `tripLandingMargin`.
+- Test: `Obstacle` na x ≈ -4.25 (niska prepreka na tlu).
+
+## Prekoracenje pri hodanju (vault)
+
+- **Trigger:** hodanje (Shift iskljucen) u nisku prepreku 0.2–0.9 m;
+  brzina 1.2–4.5 m/s.
+- **Male prepreke (<= 0.65 m):** suptilni step-over; kratak zakorak jednom nogom,
+  blagi nagib, mali luk. Faze: 0.08 s -> 0.28 s -> 0.1 s (~0.46 s).
+- **Vece niske prepreke (0.65-0.9 m):** izrazeniji vault; oslonac rukom 0.15 s ->
+  prelaz u luku 0.5 s -> doskok 0.18 s (~0.83 s).
+- U oba slucaja lik prelazi na drugu stranu bez pada i nastavlja hodanje.
+- **Ako je druga strana blokirana ili nema tla:** nema prelaska, lik se zaustavi.
+- **Space ima prioritet:** ako je skok pritisnut, auto-prelazak se ne pokrece;
+  ako je vec poceo u fazi oslonca, otkazuje se i izvodi se skok.
+- **Trcanje:** i dalje sapletanje/pad (trip).
+- Tuning: `vaultEnabled`, `vaultMinSpeed`, `vaultMaxSpeed`, `vaultPlantTime`,
+  `vaultOverTime`, `vaultLandTime`, `vaultHopHeight`, `vaultLandingMargin`,
+  `vaultCooldown`, `stepOverMaxHeight`, `stepOverPlantTime`, `stepOverOverTime`,
+  `stepOverLandTime`, `stepOverHopHeight`, `stepOverLandingMargin`.
+
 ## Stamina
 
 - **Max:** 100; trcanje troši **30/s** (~3.3 s neprekidnog trcanja).
