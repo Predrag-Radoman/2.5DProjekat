@@ -30,10 +30,13 @@ public class PlayerController : MonoBehaviour
 
     [Header("REPLACED feel")]
     [SerializeField] private float runEaseNearTop = 0.55f;
-    [SerializeField] private float groundFriction = 14f;
+    [SerializeField] private float groundFriction = 16f;
     [SerializeField] private float turnSlowdown = 0.6f;
-    [SerializeField] private float riseGravityMult = 0.95f;
-    [SerializeField] private float fallGravityMult = 1.35f;
+    [SerializeField] private float riseGravityMult = 1.12f;
+    [SerializeField] private float fallGravityMult = 1.75f;
+    [SerializeField] private float hardLandSpeed = 4.5f;
+    [SerializeField] private float landRecoveryTime = 0.12f;
+    [SerializeField] private float landRecoverySpeedFactor = 0.55f;
     [SerializeField] private float dashSpeed = 9f;
     [SerializeField] private float dashTime = 0.16f;
     [SerializeField] private float dashCooldown = 0.55f;
@@ -47,8 +50,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float crawlSpeedFactor = 0.18f;
 
     [Header("Skok")]
-    [SerializeField] private float jumpVelocity = 5.5f;
-    [SerializeField] private float jumpCutFactor = 0.45f;
+    [SerializeField] private float jumpVelocity = 5.2f;
+    [SerializeField] private float jumpCutFactor = 0.35f;
     [SerializeField] private float coyoteTime = 0.12f;
     [SerializeField] private float jumpBufferTime = 0.15f;
     [SerializeField] private float groundCheckDistance = 0.15f;
@@ -56,18 +59,34 @@ public class PlayerController : MonoBehaviour
     [Header("Ledge grab (hvatanje ivice)")]
     [SerializeField] private bool ledgeGrabEnabled = true;
     [SerializeField] private float ledgeGrabReach = 0.35f;
-    [SerializeField] private float ledgeGrabMinHeight = 0.6f;
+    [SerializeField] private float ledgeGrabMinHeight = 0.65f;
     [SerializeField] private float ledgeGrabMaxHeight = 2.3f;
-    [SerializeField] private float hangFeetOffset = 1.95f;
+    [SerializeField] private float hangFeetOffset = 1.8f;
+    [SerializeField] private float hangBodyDistance = 0.45f;
     [SerializeField] private float ledgeShimmySpeed = 1.2f;
     [SerializeField] private float ledgeJumpVelocity = 5.5f;
     [SerializeField] private float ledgeJumpPush = 6f;
     [SerializeField] private string kickOffObjectName = "Container";
-    [SerializeField] private float mantleTime = 0.9f;
+    [SerializeField] private float mantleTime = 1.05f;
     [SerializeField] private float containerClimbTime = 1.4f;
+    [SerializeField] private bool autoMantleLowLedges = false;
+    [SerializeField] private float autoMantleMaxHeight = 1.5f;
+    [SerializeField] private float quickMantleTime = 0.55f;
+    [SerializeField] private bool autoMantleAfterJump = false;
+    [SerializeField] private float autoMantleJumpWindow = 1.1f;
     [SerializeField] private float mantleInset = 0.12f;
     [SerializeField] private float mantleRecoveryTime = 0.3f;
     [SerializeField] private float ledgeRegrabDelay = 0.35f;
+
+    [Header("Skok na ivicu (Space)")]
+    [SerializeField] private bool jumpOntoEnabled = true;
+    [SerializeField] private float jumpOntoMinHeight = 0.5f;
+    [SerializeField] private float jumpOntoMaxHeight = 2.4f;
+    [SerializeField] private float jumpOntoReach = 1f;
+    [SerializeField] private float jumpOntoInset = 0.2f;
+    [SerializeField] private float jumpOntoTime = 0.6f;
+    [SerializeField] private float jumpOntoHop = 0.3f;
+    [SerializeField] private float jumpOntoMinFacing = 0.5f;
 
     [Header("Sapletanje / pad")]
     [SerializeField] private bool tripEnabled = true;
@@ -81,6 +100,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float tripCooldown = 0.7f;
     [SerializeField] private float tripHopHeight = 0.35f;
     [SerializeField] private float tripLandingMargin = 0.4f;
+    [SerializeField] private float tripTravelSpeed = 3.2f;
+    [SerializeField] private float tripClearance = 0.1f;
 
     [Header("Prekoracenje (vault)")]
     [SerializeField] private bool vaultEnabled = true;
@@ -92,6 +113,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float vaultHopHeight = 0.55f;
     [SerializeField] private float vaultLandingMargin = 0.35f;
     [SerializeField] private float vaultCooldown = 0.6f;
+    [SerializeField] private float vaultTravelSpeed = 5f;
+    [SerializeField] private float vaultClearance = 0.15f;
+    [SerializeField] private float vaultMaxTravel = 2.6f;
 
     [Header("Prekoracenje malih prepreka (step-over)")]
     [SerializeField] private float stepOverMaxHeight = 0.65f;
@@ -100,9 +124,20 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float stepOverLandTime = 0.1f;
     [SerializeField] private float stepOverHopHeight = 0.12f;
     [SerializeField] private float stepOverLandingMargin = 0.25f;
+    [SerializeField] private float stepOverTravelSpeed = 4.2f;
 
     public enum TripPhase { None, Stuck, Falling, Lying, GettingUp }
     public enum VaultPhase { None, Plant, Over, Land }
+
+    /// <summary>Plan prelaska preko prepreke (pravac, cilj, udaljenosti do ivica).</summary>
+    private struct TraversalPlan
+    {
+        public Vector3 Facing;
+        public Vector3 Target;
+        public float Entry;
+        public float Exit;
+        public float Travel;
+    }
 
     /// <summary>Dogodjenaj skoka (za SFX, VFX, Animator trigger).</summary>
     public event System.Action OnJumped;
@@ -133,6 +168,8 @@ public class PlayerController : MonoBehaviour
     public float LedgeShimmy => ledgeShimmy;
     /// <summary>0..1 napredak mantle animacije.</summary>
     public float MantleProgress => mantling ? Mathf.Clamp01(mantleTimer / Mathf.Max(0.001f, activeMantleTime)) : 0f;
+    public bool IsJumpOnto => jumpOnto;
+    public float JumpOntoProgress => jumpOnto ? Mathf.Clamp01(jumpOntoTimer / Mathf.Max(0.001f, activeJumpOntoTime)) : 0f;
     public bool IsTripping => tripping;
     public TripPhase CurrentTripPhase => tripPhase;
     public float TripProgress => tripping
@@ -149,7 +186,7 @@ public class PlayerController : MonoBehaviour
                 case TripPhase.Stuck:
                     return Mathf.Clamp01((now - tripStartTime) / Mathf.Max(0.001f, tripStuckTime));
                 case TripPhase.Falling:
-                    return Mathf.Clamp01((now - tripStuckUntil) / Mathf.Max(0.001f, tripFallTime));
+                    return Mathf.Clamp01((now - tripStuckUntil) / Mathf.Max(0.001f, activeTripFallTime));
                 case TripPhase.Lying:
                     return Mathf.Clamp01((now - tripFallUntil) / Mathf.Max(0.001f, tripLieTime));
                 case TripPhase.GettingUp:
@@ -225,17 +262,25 @@ public class PlayerController : MonoBehaviour
     private float grabCooldownUntil;
     private float mantleRecoveryUntil;
     private float jumpCutLockUntil;
+    private float landRecoveryUntil;
+    private float lastFallSpeed;
     private float ledgeKickStart;
     private float ledgeKickUntil;
     private float ledgeJumpFaceAt;
     private float ledgeJumpFaceDir;
     private float ledgeJumpSteerUntil;
+    private bool jumpOnto;
+    private float jumpOntoTimer;
+    private float activeJumpOntoTime = 0.6f;
+    private Vector3 jumpOntoStart;
+    private Vector3 jumpOntoTarget;
     private CapsuleCollider capsule;
     private float standingHeight = 2f;
     private float standingRadius = 0.5f;
     private float feetLocalY = -1f;
     private float lastGroundedTime = -1f;
     private float jumpBufferedTime = -1f;
+    private float lastJumpTime = -10f;
     private bool tripping;
     private TripPhase tripPhase;
     private float tripStartTime;
@@ -262,6 +307,14 @@ public class PlayerController : MonoBehaviour
     private float vaultCooldownUntil;
     private Vector3 vaultStartPos;
     private Vector3 vaultTargetPos;
+    private Vector3 vaultDir;
+    private float vaultExitSpeed;
+    private float vaultRiseEnd;
+    private float vaultHoldEnd;
+    private float tripRiseEnd;
+    private float tripHoldEnd;
+    private float activeTripFallTime = 0.35f;
+    private float activeTripHopHeight = 0.35f;
 
     private const float CapsuleRadius = 0.5f;
     private const float CapsuleHeight = 2f;
@@ -344,13 +397,16 @@ public class PlayerController : MonoBehaviour
 
     private void OnJumpPerformed(InputAction.CallbackContext ctx)
     {
-        if (tripping) return;
+        if (tripping || jumpOnto) return;
         if (vaulting)
         {
             if (vaultPhase == VaultPhase.Plant)
                 CancelVaultForJump();
+            else
+                jumpBufferedTime = Time.time; // skok se desi odmah posle vault-a
             return;
         }
+        if (grounded && jumpOntoEnabled && TryBeginJumpOnto()) return;
         jumpBufferedTime = Time.time;
     }
 
@@ -369,7 +425,7 @@ public class PlayerController : MonoBehaviour
 
     private void OnDashPerformed(InputAction.CallbackContext ctx)
     {
-        if (tripping || vaulting || ledgeHanging || mantling) return;
+        if (tripping || vaulting || jumpOnto || ledgeHanging || mantling) return;
         if (crouching || crawling) return;
         if (Time.time - lastDashTime < dashCooldown) return;
         Vector2 mi = moveAction.ReadValue<Vector2>();
@@ -384,21 +440,21 @@ public class PlayerController : MonoBehaviour
 
     private void OnSprintPerformed(InputAction.CallbackContext ctx)
     {
-        if (tripping || vaulting) return;
+        if (tripping || vaulting || jumpOnto) return;
         if (!running && stamina < staminaMinToStart) return;
         running = !running;
     }
 
     private void OnCrouchPerformed(InputAction.CallbackContext ctx)
     {
-        if (tripping || vaulting || ledgeHanging || mantling) return;
+        if (tripping || vaulting || jumpOnto || ledgeHanging || mantling) return;
         crouchToggled = !crouchToggled;
         if (crouchToggled) crawlToggled = false;
     }
 
     private void OnCrawlPerformed(InputAction.CallbackContext ctx)
     {
-        if (tripping || vaulting || ledgeHanging || mantling) return;
+        if (tripping || vaulting || jumpOnto || ledgeHanging || mantling) return;
         crawlToggled = !crawlToggled;
         if (crawlToggled) crouchToggled = false;
     }
@@ -489,6 +545,12 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        if (jumpOnto)
+        {
+            UpdateJumpOnto();
+            return;
+        }
+
         if (ledgeHanging)
         {
             UpdateLedgeState();
@@ -497,7 +559,12 @@ public class PlayerController : MonoBehaviour
 
         UpdateGrounded();
         if (grounded) lastGroundedTime = Time.time;
-        if (grounded && !wasGrounded) OnLanded?.Invoke();
+        if (grounded && !wasGrounded)
+        {
+            OnLanded?.Invoke();
+            if (lastFallSpeed < -hardLandSpeed)
+                landRecoveryUntil = Time.time + landRecoveryTime;
+        }
         wasGrounded = grounded;
         UpdateStance();
 
@@ -505,11 +572,26 @@ public class PlayerController : MonoBehaviour
         if (Time.time < mantleRecoveryUntil) moveInput = Vector2.zero;
 
         if (ledgeGrabEnabled && !grounded && !crouching && !crawling && dashTimer <= 0f &&
-            moveInput.y > -0.5f && Time.time >= grabCooldownUntil && rb.linearVelocity.y <= 0.5f &&
+            moveInput.y > -0.5f && Time.time >= grabCooldownUntil && rb.linearVelocity.y <= 0.1f &&
             TryFindLedge(out Vector3 ledgeTop, out Vector3 ledgeHitNormal))
         {
-            BeginLedgeHang(ledgeTop, ledgeHitNormal);
-            return;
+            float ledgeHeight = ledgeTop.y - (transform.position.y + feetLocalY);
+            Vector3 planarVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+            bool approachingWall = Vector3.Dot(planarVelocity, -ledgeHitNormal) > -0.5f;
+
+            if (approachingWall)
+            {
+                bool jumpedRecently = autoMantleAfterJump &&
+                                      Time.time - lastJumpTime <= autoMantleJumpWindow;
+                bool lowLedge = autoMantleLowLedges && ledgeHeight <= autoMantleMaxHeight;
+
+                if ((jumpedRecently || lowLedge) &&
+                    TryBeginQuickMantle(ledgeTop, ledgeHitNormal))
+                    return;
+
+                BeginLedgeHang(ledgeTop, ledgeHitNormal);
+                return;
+            }
         }
 
         // 2.5D mapiranje: X input -> sveta X, Y input -> sveta Z (dubina koridora,
@@ -523,6 +605,7 @@ public class PlayerController : MonoBehaviour
         Vector3 velocity = rb.linearVelocity;
         Vector3 horizontal = new Vector3(velocity.x, 0f, velocity.z);
         float effSpeed = moveSpeed;
+        if (Time.time < landRecoveryUntil) effSpeed *= landRecoverySpeedFactor;
         if (crawling) effSpeed *= crawlSpeedFactor;
         else if (crouching) effSpeed *= crouchSpeedFactor;
         else if (running) effSpeed *= runSpeedFactor;
@@ -569,10 +652,12 @@ public class PlayerController : MonoBehaviour
             newVelocity.y = jumpVelocity;
             lastGroundedTime = -1f;
             jumpBufferedTime = -1f;
+            lastJumpTime = Time.time;
             OnJumped?.Invoke();
         }
 
         rb.linearVelocity = newVelocity;
+        lastFallSpeed = newVelocity.y;
         lastPlanarVelocity = new Vector3(newVelocity.x, 0f, newVelocity.z);
         lastPlanarSpeed = lastPlanarVelocity.magnitude;
 
@@ -639,8 +724,18 @@ public class PlayerController : MonoBehaviour
             float delta = top.point.y - feetY;
             if (delta < ledgeGrabMinHeight || delta > ledgeGrabMaxHeight) continue;
 
+            Vector3 n = new Vector3(wall.normal.x, 0f, wall.normal.z).normalized;
+            Vector3 hangSpot = new Vector3(wall.point.x, top.point.y, wall.point.z) +
+                               n * hangBodyDistance;
+            float hangFeetY = top.point.y - hangFeetOffset;
+            if (Physics.Raycast(new Vector3(hangSpot.x, top.point.y - 0.1f, hangSpot.z), Vector3.down,
+                                out RaycastHit below, hangFeetOffset + 0.6f, mask,
+                                QueryTriggerInteraction.Ignore) &&
+                below.point.y > hangFeetY + 0.05f)
+                continue;
+
             topPoint = new Vector3(wall.point.x, top.point.y, wall.point.z);
-            normal = new Vector3(wall.normal.x, 0f, wall.normal.z).normalized;
+            normal = n;
             ledgeKickAllowed = IsKickOffSurface(wall.collider);
             ledgeRootCollider = wall.collider.transform.root.GetComponent<Collider>();
             if (ledgeRootCollider == null) ledgeRootCollider = wall.collider;
@@ -676,7 +771,7 @@ public class PlayerController : MonoBehaviour
 
     private Vector3 LedgePosition(Vector3 point)
     {
-        Vector3 p = point + ledgeNormal * (standingRadius + 0.05f);
+        Vector3 p = point + ledgeNormal * hangBodyDistance;
         p.y = point.y - hangFeetOffset - feetLocalY;
         return p;
     }
@@ -765,26 +860,80 @@ public class PlayerController : MonoBehaviour
         return true;
     }
 
-    private Vector3 MantleTargetFeet()
+    private Vector3 MantleTargetFeet(Vector3 top, Vector3 normal)
     {
-        Vector3 feet = ledgePoint - ledgeNormal * mantleInset;
-        feet.y = ledgePoint.y + 0.02f;
+        return MantleTargetFeet(top, normal, mantleInset);
+    }
+
+    private Vector3 MantleTargetFeet(Vector3 top, Vector3 normal, float inset)
+    {
+        Vector3 feet = top - normal * inset;
+        feet.y = top.y + 0.02f;
         return feet;
     }
 
-    private bool CanMantle()
+    private Vector3 MantleTargetFeet()
+    {
+        return MantleTargetFeet(ledgePoint, ledgeNormal);
+    }
+
+    private bool CanMantleAt(Vector3 top, Vector3 normal)
+    {
+        return CanStandAt(MantleTargetFeet(top, normal));
+    }
+
+    private bool CanStandAt(Vector3 feet)
     {
         int mask = ~(1 << gameObject.layer);
-        Vector3 feet = MantleTargetFeet();
 
         if (!Physics.Raycast(feet + Vector3.up * 0.8f, Vector3.down, out RaycastHit ground, 1.6f, mask, QueryTriggerInteraction.Ignore))
             return false;
         if (Vector3.Dot(ground.normal, Vector3.up) < 0.7f) return false;
-        if (Mathf.Abs(ground.point.y - ledgePoint.y) > 0.25f) return false;
+        if (Mathf.Abs(ground.point.y - feet.y) > 0.25f) return false;
 
         Vector3 bottom = feet + Vector3.up * (standingRadius + 0.02f);
-        Vector3 top = feet + Vector3.up * (standingHeight - standingRadius - 0.02f);
-        return !Physics.CheckCapsule(bottom, top, standingRadius * 0.95f, mask, QueryTriggerInteraction.Ignore);
+        Vector3 upper = feet + Vector3.up * (standingHeight - standingRadius - 0.02f);
+        return !Physics.CheckCapsule(bottom, upper, standingRadius * 0.95f, mask, QueryTriggerInteraction.Ignore);
+    }
+
+    private bool CanMantle()
+    {
+        return CanMantleAt(ledgePoint, ledgeNormal);
+    }
+
+    private bool TryBeginQuickMantle(Vector3 top, Vector3 normal)
+    {
+        if (!CanMantleAt(top, normal)) return false;
+
+        Vector3 entry = rb.position;
+        ledgeHanging = true;
+        mantling = true;
+        ledgePoint = top;
+        ledgeNormal = normal;
+        ledgeShimmy = 0f;
+        crouching = false;
+        crawling = false;
+        crouchToggled = false;
+        crawlToggled = false;
+        ledgeMantleArmed = true;
+        ApplyCapsuleHeight();
+
+        dashTimer = 0f;
+        jumpBufferedTime = -1f;
+        lastGroundedTime = -1f;
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        rb.useGravity = false;
+        rb.isKinematic = true;
+        rb.rotation = Quaternion.LookRotation(-normal, Vector3.up);
+
+        float height = top.y - (transform.position.y + feetLocalY);
+        mantleTimer = 0f;
+        mantleStart = entry;
+        mantleTarget = MantleTargetFeet(top, normal) - Vector3.up * feetLocalY;
+        activeMantleTime = Mathf.Clamp(quickMantleTime + Mathf.Max(0f, height - 1f) * 0.18f,
+                                       quickMantleTime, mantleTime);
+        return true;
     }
 
     private bool TryBeginContainerClimb()
@@ -826,8 +975,8 @@ public class PlayerController : MonoBehaviour
     {
         mantleTimer += Time.fixedDeltaTime;
         float t = Mathf.Clamp01(mantleTimer / Mathf.Max(0.001f, activeMantleTime));
-        float rise = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.7f));
-        float move = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.7f) / 0.3f));
+        float rise = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.78f));
+        float move = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.5f) / 0.5f));
         Vector3 pos = new Vector3(
             Mathf.Lerp(mantleStart.x, mantleTarget.x, move),
             Mathf.Lerp(mantleStart.y, mantleTarget.y, rise),
@@ -850,6 +999,146 @@ public class PlayerController : MonoBehaviour
         ledgeShimmy = 0f;
         grabCooldownUntil = Time.time + ledgeRegrabDelay;
         mantleRecoveryUntil = Time.time + mantleRecoveryTime;
+    }
+
+    // --- Skok na ivicu (Space): lik skoci i doceka se na platformu ispred ---
+    private bool TryBeginJumpOnto()
+    {
+        if (capsule == null) return false;
+        if (crouching || crawling || dashTimer > 0f) return false;
+
+        Vector3 forward = transform.forward;
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
+        forward.Normalize();
+
+        Vector2 mi = moveAction.ReadValue<Vector2>();
+        Vector3 wish = Vector3.ClampMagnitude(new Vector3(mi.x, 0f, mi.y), 1f);
+        wish.z *= depthSpeedFactor;
+        bool hasInput = wish.sqrMagnitude > 0.04f;
+        Vector3 bias = hasInput ? wish.normalized : forward;
+
+        // smer inputa/pogleda prvo, pa blago u stranu (platforma ume da bude uz bok)
+        float[] angles = { 0f, -35f, 35f, -70f, 70f, -90f, 90f };
+        for (int a = 0; a < angles.Length; a++)
+        {
+            Vector3 dir = Quaternion.Euler(0f, angles[a], 0f) * bias;
+            if (TryJumpOntoDirection(dir, wish, hasInput)) return true;
+        }
+        return false;
+    }
+
+    private bool TryJumpOntoDirection(Vector3 dir, Vector3 wish, bool hasInput)
+    {
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 0.01f) return false;
+        dir.Normalize();
+
+        int mask = ~(1 << gameObject.layer);
+        float feetY = transform.position.y + feetLocalY;
+        float reach = standingRadius + jumpOntoReach;
+        float[] heights = { 0.3f, 0.7f, 1.1f, 1.5f, 1.9f };
+
+        for (int i = 0; i < heights.Length; i++)
+        {
+            Vector3 origin = new Vector3(transform.position.x, feetY + heights[i], transform.position.z);
+            if (!Physics.Raycast(origin, dir, out RaycastHit wall, reach, mask, QueryTriggerInteraction.Ignore))
+                continue;
+            if (Mathf.Abs(Vector3.Dot(wall.normal, Vector3.up)) > 0.35f) continue;
+            if (Vector3.Dot(wall.normal, dir) > -jumpOntoMinFacing) continue;
+
+            Vector3 normal = new Vector3(wall.normal.x, 0f, wall.normal.z).normalized;
+            Vector3 inward = -normal;
+            Vector3 probe = wall.point + inward * 0.05f;
+
+            float probeStartY = feetY + jumpOntoMaxHeight + 0.8f;
+            if (!Physics.Raycast(new Vector3(probe.x, probeStartY, probe.z), Vector3.down,
+                                 out RaycastHit top, jumpOntoMaxHeight + 1.4f, mask,
+                                 QueryTriggerInteraction.Ignore))
+                continue;
+            if (Vector3.Dot(top.normal, Vector3.up) < 0.7f) continue;
+
+            float delta = top.point.y - feetY;
+            if (delta < jumpOntoMinHeight || delta > jumpOntoMaxHeight) continue;
+
+            // ne skaci ako igrac drzi smer od ivice
+            if (hasInput && Vector3.Dot(wish.normalized, inward) < -0.5f) continue;
+
+            Vector3 landDeep = MantleTargetFeet(top.point, normal, standingRadius + jumpOntoInset);
+            Vector3 landEdge = MantleTargetFeet(top.point, normal, standingRadius * 0.7f);
+            Vector3 landFeet;
+            if (CanStandAt(landDeep)) landFeet = landDeep;
+            else if (CanStandAt(landEdge)) landFeet = landEdge;
+            else continue;
+
+            BeginJumpOnto(landFeet, inward, delta);
+            return true;
+        }
+        return false;
+    }
+
+    private void BeginJumpOnto(Vector3 landFeet, Vector3 inward, float height)
+    {
+        jumpOnto = true;
+        jumpOntoTimer = 0f;
+        jumpOntoStart = rb.position;
+        jumpOntoTarget = landFeet - Vector3.up * feetLocalY;
+
+        float planar = PlanarDistance(jumpOntoStart, jumpOntoTarget);
+        activeJumpOntoTime = Mathf.Clamp(jumpOntoTime + height * 0.1f + planar * 0.12f, 0.45f, 1f);
+
+        crouchToggled = false;
+        crawlToggled = false;
+        crouching = false;
+        crawling = false;
+        dashTimer = 0f;
+        jumpBufferedTime = -1f;
+        ledgeHanging = false;
+        mantling = false;
+        lastJumpTime = Time.time;
+        lastGroundedTime = Time.time;
+        ApplyCapsuleHeight();
+
+        rb.rotation = Quaternion.LookRotation(inward, Vector3.up);
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        rb.isKinematic = true;
+        rb.useGravity = false;
+        OnJumped?.Invoke();
+    }
+
+    private void UpdateJumpOnto()
+    {
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+
+        jumpOntoTimer += Time.fixedDeltaTime;
+        float t = Mathf.Clamp01(jumpOntoTimer / Mathf.Max(0.01f, activeJumpOntoTime));
+        float rise = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.62f));
+        float forward = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.12f) / 0.88f));
+
+        Vector3 pos = new Vector3(
+            Mathf.Lerp(jumpOntoStart.x, jumpOntoTarget.x, forward),
+            Mathf.Lerp(jumpOntoStart.y, jumpOntoTarget.y, rise) +
+                jumpOntoHop * Mathf.Sin(Mathf.PI * t),
+            Mathf.Lerp(jumpOntoStart.z, jumpOntoTarget.z, forward));
+        rb.MovePosition(pos);
+
+        if (t >= 1f) FinishJumpOnto();
+    }
+
+    private void FinishJumpOnto()
+    {
+        jumpOnto = false;
+        ApplyCapsuleHeight();
+        rb.position = jumpOntoTarget;
+        rb.isKinematic = false;
+        rb.useGravity = true;
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        lastGroundedTime = Time.time;
+        grabCooldownUntil = Time.time + 0.15f;
+        OnLanded?.Invoke();
     }
 
     private void ReleaseLedge()
@@ -875,6 +1164,7 @@ public class PlayerController : MonoBehaviour
         rb.useGravity = true;
         rb.position += ledgeNormal * 0.03f;
         rb.linearVelocity = new Vector3(dir * ledgeJumpPush, ledgeJumpVelocity, 0f);
+        lastJumpTime = Time.time;
         grabCooldownUntil = Time.time + ledgeRegrabDelay;
         jumpCutLockUntil = Time.time + 0.2f;
         ledgeKickStart = Time.time;
@@ -884,33 +1174,114 @@ public class PlayerController : MonoBehaviour
         ledgeJumpSteerUntil = Time.time + 0.6f;
     }
 
-    private Vector3 ComputeTraversalTarget(Vector3 awayFromObstacle, Bounds obstacleBounds, float landingMargin)
+    // Plan prelaska preko prepreke: pravac, cilj i udaljenosti do blize/dalje ivice.
+    // Stari obrazac "centar prepreke + projekcija extenta" je za duboku zidnu
+    // prepreku davao ogroman cilj pri dijagonalnom prilazu -> lik je "poletao" napred.
+    private TraversalPlan PlanTraversal(Vector3 awayFromObstacle, Bounds obstacleBounds, float landingMargin)
     {
+        TraversalPlan plan = new TraversalPlan();
+
         Vector3 facing = -awayFromObstacle;
         facing.y = 0f;
         if (facing.sqrMagnitude < 0.001f) facing = transform.forward;
         facing.y = 0f;
+        if (facing.sqrMagnitude < 0.001f) facing = Vector3.forward;
         facing.Normalize();
+        plan.Facing = facing;
 
-        float forwardExtent = Mathf.Abs(facing.x) * obstacleBounds.extents.x +
-                              Mathf.Abs(facing.z) * obstacleBounds.extents.z;
-        float toCenter = Vector3.Dot(obstacleBounds.center - transform.position, facing);
-        float clearDistance = Mathf.Max(0.9f, toCenter + forwardExtent + standingRadius + landingMargin);
-        Vector3 target = transform.position + facing * clearDistance;
-        target.y = transform.position.y;
-        return target;
+        float nearDist;
+        float farDist;
+        if (TryGetTraversalSpan(facing, obstacleBounds, out nearDist, out farDist))
+        {
+            plan.Entry = nearDist;
+            plan.Exit = farDist;
+        }
+        else
+        {
+            float forwardExtent = Mathf.Abs(facing.x) * obstacleBounds.extents.x +
+                                  Mathf.Abs(facing.z) * obstacleBounds.extents.z;
+            float toCenter = Vector3.Dot(obstacleBounds.center - transform.position, facing);
+            plan.Entry = Mathf.Max(0f, toCenter - forwardExtent);
+            plan.Exit = toCenter + forwardExtent;
+        }
+
+        float clearDistance = Mathf.Max(0.9f, plan.Exit + standingRadius + landingMargin);
+        plan.Target = transform.position + facing * clearDistance;
+        plan.Target.y = transform.position.y;
+        plan.Travel = PlanarDistance(transform.position, plan.Target);
+        return plan;
     }
 
-    private void BeginTrip(Vector3 awayFromObstacle, Bounds obstacleBounds)
+    // Udaljenosti do blize i dalje ivice prepreke duz pravca kretanja (ray vs AABB u XZ).
+    private bool TryGetTraversalSpan(Vector3 facing, Bounds bounds, out float nearDist, out float farDist)
+    {
+        Vector3 origin = transform.position;
+        float tMin = 0f;
+        float tMax = float.MaxValue;
+
+        for (int axis = 0; axis < 2; axis++)
+        {
+            float o = axis == 0 ? origin.x : origin.z;
+            float d = axis == 0 ? facing.x : facing.z;
+            float min = axis == 0 ? bounds.min.x : bounds.min.z;
+            float max = axis == 0 ? bounds.max.x : bounds.max.z;
+
+            if (Mathf.Abs(d) < 0.0001f)
+            {
+                if (o < min || o > max)
+                {
+                    nearDist = 0f;
+                    farDist = -1f;
+                    return false;
+                }
+                continue;
+            }
+
+            float inv = 1f / d;
+            float t1 = (min - o) * inv;
+            float t2 = (max - o) * inv;
+            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+            tMin = Mathf.Max(tMin, t1);
+            tMax = Mathf.Min(tMax, t2);
+        }
+
+        if (tMax < tMin || tMax < 0f)
+        {
+            nearDist = 0f;
+            farDist = -1f;
+            return false;
+        }
+
+        nearDist = Mathf.Max(0f, tMin);
+        farDist = tMax;
+        return true;
+    }
+
+    // Pravac "od prepreke" iz kontakt normale umesto iz centra prepreke.
+    // Centar prepreke je daleko od ivice (npr. 4.8 m duboka zidna prepreka),
+    // pa je dijagonalni prilaz davao ogroman cilj -> lik je "poletao" napred.
+    private Vector3 CollisionAwayDirection(Collision collision, Bounds bounds)
+    {
+        if (collision != null && collision.contactCount > 0)
+        {
+            Vector3 n = collision.GetContact(0).normal;
+            n.y = 0f;
+            if (n.sqrMagnitude > 0.0001f) return n.normalized;
+        }
+
+        Vector3 fallback = transform.position - bounds.center;
+        fallback.y = 0f;
+        if (fallback.sqrMagnitude > 0.0001f) return fallback.normalized;
+        return Vector3.zero;
+    }
+
+    private void BeginTrip(TraversalPlan plan, float obstacleHeight)
     {
         float now = Time.time;
         tripping = true;
         tripPhase = TripPhase.Stuck;
         tripStartTime = now;
         tripStuckUntil = now + tripStuckTime;
-        tripFallUntil = tripStuckUntil + tripFallTime;
-        tripLieUntil = tripFallUntil + tripLieTime;
-        tripGetUpUntil = tripLieUntil + tripGetUpTime;
 
         running = false;
         crouchToggled = false;
@@ -923,17 +1294,24 @@ public class PlayerController : MonoBehaviour
         mantling = false;
         ApplyCapsuleHeight();
 
-        Vector3 facing = -awayFromObstacle;
-        facing.y = 0f;
-        if (facing.sqrMagnitude > 0.001f)
-            facing.Normalize();
-        else
-            facing = transform.forward;
-        facing.y = 0f;
+        Vector3 facing = plan.Facing;
 
         tripStartPos = rb.position;
-        tripTargetPos = ComputeTraversalTarget(awayFromObstacle, obstacleBounds, tripLandingMargin);
+        tripTargetPos = plan.Target;
         tripTargetPos.y = tripStartPos.y;
+
+        float travel = PlanarDistance(tripStartPos, tripTargetPos);
+        activeTripFallTime = Mathf.Max(tripFallTime, 1.5f * travel / Mathf.Max(0.5f, tripTravelSpeed));
+        tripFallUntil = tripStuckUntil + activeTripFallTime;
+        tripLieUntil = tripFallUntil + tripLieTime;
+        tripGetUpUntil = tripLieUntil + tripGetUpTime;
+
+        // Pad preko prepreke: lik se podigne samo toliko da prede prepreku
+        // (bez velikog luka -> bez "poletanja") i ne prolazi kroz nju.
+        activeTripHopHeight = Mathf.Max(tripHopHeight, obstacleHeight + tripClearance);
+        ComputeHeightWindows(travel, tripStuckUntil, activeTripFallTime,
+                             plan.Entry - crawlRadius, plan.Exit + crawlRadius,
+                             out tripRiseEnd, out tripHoldEnd);
 
         rb.rotation = Quaternion.LookRotation(facing, Vector3.up);
         rb.linearVelocity = Vector3.zero;
@@ -941,6 +1319,33 @@ public class PlayerController : MonoBehaviour
         rb.isKinematic = true;
         rb.useGravity = false;
     }
+
+    // Prozori visine: podizanje do blize ivice, drzanje iznad prepreke, spust posle daleje.
+    // "entryDist"/"exitDist" su udaljenosti po putanji gde kapsula dodirne, odnosno
+    // prede prepreku -> profil se ne moze racunati od centra prepreke.
+    private static void ComputeHeightWindows(float travel, float motionStart, float moveTime,
+                                             float entryDist, float exitDist,
+                                             out float riseEnd, out float holdEnd)
+    {
+        float e = Mathf.Clamp(entryDist, 0.02f, travel * 0.6f);
+        float x = Mathf.Clamp(exitDist, e + 0.02f, travel);
+        riseEnd = motionStart + InverseSmoothStep(e / Mathf.Max(0.01f, travel)) * moveTime;
+        holdEnd = motionStart + InverseSmoothStep(x / Mathf.Max(0.01f, travel)) * moveTime;
+    }
+
+    // Visina tela po profilu: podizanje -> drzanje -> spust.
+    private static float ProfileHeight(float now, float start, float riseEnd, float holdEnd, float end, float height)
+    {
+        if (height <= 0f) return 0f;
+
+        if (now <= riseEnd)
+            return height * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((now - start) / Mathf.Max(0.001f, riseEnd - start)));
+
+        if (now <= holdEnd) return height;
+
+        return height * (1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((now - holdEnd) / Mathf.Max(0.001f, end - holdEnd))));
+    }
+
 
     private void UpdateTrip()
     {
@@ -956,10 +1361,10 @@ public class PlayerController : MonoBehaviour
         else if (now < tripFallUntil)
         {
             tripPhase = TripPhase.Falling;
-            float t = Mathf.Clamp01((now - tripStuckUntil) / Mathf.Max(0.001f, tripFallTime));
+            float t = Mathf.Clamp01((now - tripStuckUntil) / Mathf.Max(0.001f, activeTripFallTime));
             float forward = Mathf.SmoothStep(0f, 1f, t);
             Vector3 pos = Vector3.Lerp(tripStartPos, tripTargetPos, forward);
-            pos.y += Mathf.Sin(t * Mathf.PI) * tripHopHeight;
+            pos.y += ProfileHeight(now, tripStuckUntil, tripRiseEnd, tripHoldEnd, tripFallUntil, activeTripHopHeight);
             rb.MovePosition(pos);
         }
         else if (now < tripLieUntil)
@@ -1017,13 +1422,12 @@ public class PlayerController : MonoBehaviour
         float height = b.max.y - feetY;
         if (height < tripMinObstacleHeight || height > tripMaxObstacleHeight) return;
 
-        Vector3 away = transform.position - b.center;
-        away.y = 0f;
+        Vector3 away = CollisionAwayDirection(collision, b);
         if (away.sqrMagnitude < 0.0001f) return;
-        away.Normalize();
         if (Vector3.Dot(away, lastPlanarVelocity.normalized) > -0.25f) return;
 
-        BeginTrip(away, b);
+        TraversalPlan plan = PlanTraversal(away, b, tripLandingMargin);
+        BeginTrip(plan, height);
     }
 
     private void TryVault(Collision collision)
@@ -1043,18 +1447,17 @@ public class PlayerController : MonoBehaviour
         float height = b.max.y - feetY;
         if (height < tripMinObstacleHeight || height > tripMaxObstacleHeight) return;
 
-        Vector3 away = transform.position - b.center;
-        away.y = 0f;
+        Vector3 away = CollisionAwayDirection(collision, b);
         if (away.sqrMagnitude < 0.0001f) return;
-        away.Normalize();
         if (Vector3.Dot(away, lastPlanarVelocity.normalized) > -0.25f) return;
 
         bool stepOver = height <= stepOverMaxHeight;
         float landingMargin = stepOver ? stepOverLandingMargin : vaultLandingMargin;
-        Vector3 target = ComputeTraversalTarget(away, b, landingMargin);
-        if (!VaultTargetIsClear(target)) return;
+        TraversalPlan plan = PlanTraversal(away, b, landingMargin);
+        if (plan.Travel > vaultMaxTravel) return;
+        if (!VaultTargetIsClear(plan.Target)) return;
 
-        BeginVault(away, target, stepOver);
+        BeginVault(plan, stepOver, height);
     }
 
     private bool VaultTargetIsClear(Vector3 target)
@@ -1071,20 +1474,13 @@ public class PlayerController : MonoBehaviour
         return !Physics.CheckCapsule(bottom, top, standingRadius * 0.95f, mask, QueryTriggerInteraction.Ignore);
     }
 
-    private void BeginVault(Vector3 awayFromObstacle, Vector3 target, bool stepOver)
+    private void BeginVault(TraversalPlan plan, bool stepOver, float obstacleHeight)
     {
         float now = Time.time;
         vaulting = true;
         vaultStepOver = stepOver;
         activeVaultPlantTime = stepOver ? stepOverPlantTime : vaultPlantTime;
-        activeVaultOverTime = stepOver ? stepOverOverTime : vaultOverTime;
         activeVaultLandTime = stepOver ? stepOverLandTime : vaultLandTime;
-        activeVaultHopHeight = stepOver ? stepOverHopHeight : vaultHopHeight;
-        vaultPhase = VaultPhase.Plant;
-        vaultStartTime = now;
-        vaultPlantUntil = now + activeVaultPlantTime;
-        vaultOverUntil = vaultPlantUntil + activeVaultOverTime;
-        vaultLandUntil = vaultOverUntil + activeVaultLandTime;
 
         crouchToggled = false;
         crawlToggled = false;
@@ -1096,21 +1492,55 @@ public class PlayerController : MonoBehaviour
         mantling = false;
         ApplyCapsuleHeight();
 
-        Vector3 facing = -awayFromObstacle;
-        facing.y = 0f;
-        if (facing.sqrMagnitude < 0.001f) facing = transform.forward;
-        facing.y = 0f;
-        facing.Normalize();
+        Vector3 facing = plan.Facing;
 
         vaultStartPos = rb.position;
-        vaultTargetPos = target;
+        vaultTargetPos = plan.Target;
         vaultTargetPos.y = vaultStartPos.y;
+
+        float travel = PlanarDistance(vaultStartPos, vaultTargetPos);
+        float speedLimit = stepOver ? stepOverTravelSpeed : vaultTravelSpeed;
+        float baseOverTime = stepOver ? stepOverOverTime : vaultOverTime;
+        activeVaultOverTime = Mathf.Max(baseOverTime, 1.5f * travel / Mathf.Max(0.5f, speedLimit));
+        activeVaultHopHeight = Mathf.Max(stepOver ? stepOverHopHeight : vaultHopHeight,
+                                        obstacleHeight + vaultClearance);
+
+        vaultPhase = VaultPhase.Plant;
+        vaultStartTime = now;
+        vaultPlantUntil = now + activeVaultPlantTime;
+        vaultOverUntil = vaultPlantUntil + activeVaultOverTime;
+        vaultLandUntil = vaultOverUntil + activeVaultLandTime;
+
+        // Profil visine: podizanje pre blize ivice, drzanje iznad prepreke, spust posle daleje ivice.
+        // Sinusni luk je davao "poletanje" (vrh visoko iznad prepreke) ili klizanje kroz prepreku.
+        ComputeHeightWindows(travel, vaultPlantUntil, activeVaultOverTime,
+                             plan.Entry - crawlRadius, plan.Exit + crawlRadius,
+                             out vaultRiseEnd, out vaultHoldEnd);
+
+        vaultDir = travel > 0.01f ? vaultTargetPos - vaultStartPos : facing;
+        vaultDir.y = 0f;
+        if (vaultDir.sqrMagnitude < 0.0001f) vaultDir = facing;
+        vaultDir.Normalize();
+
+        vaultExitSpeed = Mathf.Clamp(lastPlanarSpeed, 0f, moveSpeed) * 0.6f;
 
         rb.rotation = Quaternion.LookRotation(facing, Vector3.up);
         rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         rb.isKinematic = true;
         rb.useGravity = false;
+    }
+
+    // Obrnuto od Mathf.SmoothStep: daje t (0..1) za zadatu vrednost smoothstep-a.
+    private static float InverseSmoothStep(float y)
+    {
+        y = Mathf.Clamp01(y);
+        return 0.5f - Mathf.Sin(Mathf.Asin(1f - 2f * y) / 3f);
+    }
+
+    private static float PlanarDistance(Vector3 a, Vector3 b)
+    {
+        return Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
     }
 
     private void UpdateVault()
@@ -1122,7 +1552,9 @@ public class PlayerController : MonoBehaviour
         if (now < vaultPlantUntil)
         {
             vaultPhase = VaultPhase.Plant;
-            rb.MovePosition(vaultStartPos);
+            Vector3 plant = vaultStartPos;
+            plant.y += ProfileHeight(now, vaultStartTime, vaultRiseEnd, vaultHoldEnd, vaultLandUntil, activeVaultHopHeight);
+            rb.MovePosition(plant);
         }
         else if (now < vaultOverUntil)
         {
@@ -1130,13 +1562,15 @@ public class PlayerController : MonoBehaviour
             float t = Mathf.Clamp01((now - vaultPlantUntil) / Mathf.Max(0.001f, activeVaultOverTime));
             float forward = Mathf.SmoothStep(0f, 1f, t);
             Vector3 pos = Vector3.Lerp(vaultStartPos, vaultTargetPos, forward);
-            pos.y += Mathf.Sin(t * Mathf.PI) * activeVaultHopHeight;
+            pos.y += ProfileHeight(now, vaultStartTime, vaultRiseEnd, vaultHoldEnd, vaultLandUntil, activeVaultHopHeight);
             rb.MovePosition(pos);
         }
         else if (now < vaultLandUntil)
         {
             vaultPhase = VaultPhase.Land;
-            rb.MovePosition(vaultTargetPos);
+            Vector3 pos = vaultTargetPos;
+            pos.y += ProfileHeight(now, vaultStartTime, vaultRiseEnd, vaultHoldEnd, vaultLandUntil, activeVaultHopHeight);
+            rb.MovePosition(pos);
         }
         else FinishVault();
     }
@@ -1151,6 +1585,7 @@ public class PlayerController : MonoBehaviour
         ApplyCapsuleHeight();
         rb.isKinematic = false;
         rb.useGravity = true;
+        rb.position = vaultStartPos; // skok kreće sa zemlje, ne sa visine "podizanja"
         rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         jumpBufferedTime = Time.time;
@@ -1161,12 +1596,12 @@ public class PlayerController : MonoBehaviour
         vaulting = false;
         vaultPhase = VaultPhase.None;
         vaultCooldownUntil = Time.time + vaultCooldown;
-        jumpBufferedTime = -1f;
         lastGroundedTime = Time.time;
         ApplyCapsuleHeight();
         rb.isKinematic = false;
         rb.useGravity = true;
-        rb.linearVelocity = Vector3.zero;
+        // momentum se nosi dalje u pravcu vault-a (ne stop, ali ni "poletanje")
+        rb.linearVelocity = vaultDir * vaultExitSpeed;
         rb.angularVelocity = Vector3.zero;
     }
 

@@ -41,11 +41,14 @@ public class ProceduralPlayerAnimator : MonoBehaviour
     [SerializeField] private float landCrouchAmp = 0.14f;
 
     [Header("Ledge grab")]
-    [SerializeField] private float hangArmRaise = 160f;
+    [SerializeField] private float hangArmRaise = 155f;
+    [SerializeField] private float hangArmPress = 62f;
+    [SerializeField] private float mantleKneeSwing = 102f;
+    [SerializeField] private float mantleKneeOtherSwing = 34f;
+    [SerializeField] private float mantleBodyLean = -34f;
     [SerializeField] private float hangLegBend = 12f;
     [SerializeField] private float hangBodyLean = 8f;
     [SerializeField] private float hangShimmySway = 10f;
-    [SerializeField] private float mantleLegTuck = 45f;
 
     [Header("Sapletanje / pad")]
     [SerializeField] private float tripStuckPitch = 18f;
@@ -117,6 +120,13 @@ public class ProceduralPlayerAnimator : MonoBehaviour
         if (controller.IsTripping)
         {
             UpdateTripPose();
+            ApplySquash(0f);
+            return;
+        }
+
+        if (controller.IsJumpOnto)
+        {
+            UpdateJumpOntoPose();
             ApplySquash(0f);
             return;
         }
@@ -201,6 +211,27 @@ public class ProceduralPlayerAnimator : MonoBehaviour
         }
     }
 
+    /// <summary>Skok na ivicu/platformu (Space): zalet uvis, tuck u vazduhu, doskok.</summary>
+    private void UpdateJumpOntoPose()
+    {
+        float t = controller.JumpOntoProgress;
+        float air = Mathf.Sin(Mathf.PI * Mathf.Clamp01(t));
+        float takeoff = 1f - Mathf.Clamp01(t / 0.2f);
+
+        float tuck = jumpTuckAngle * (0.55f + 0.45f * air) + 10f * takeoff;
+        if (legL != null) legL.localRotation = Quaternion.Euler(tuck, 0f, 0f);
+        if (legR != null) legR.localRotation = Quaternion.Euler(tuck * 0.65f, 0f, 0f);
+
+        float arm = -armRaiseAngle * (0.4f + 0.6f * air);
+        if (armL != null) armL.localRotation = Quaternion.Euler(arm, 0f, 0f);
+        if (armR != null) armR.localRotation = Quaternion.Euler(arm, 0f, 0f);
+
+        hips.localRotation = Quaternion.identity;
+        hips.localPosition = baseHipsPos - Vector3.up * (0.06f * air);
+        if (body != null) body.localRotation = Quaternion.Euler(vaultOverPitch * 0.3f * air, 0f, 0f);
+        if (head != null) head.localRotation = Quaternion.Euler(-12f * air, 0f, 0f);
+    }
+
     /// <summary>Visenje o ivicu + shimmy + mantle (penjanje).</summary>
     private void UpdateLedgePose()
     {
@@ -208,18 +239,31 @@ public class ProceduralPlayerAnimator : MonoBehaviour
         float shimmy = controller.IsMantling ? 0f : controller.LedgeShimmy;
         float sway = Mathf.Sin(Time.time * 9f) * hangShimmySway * Mathf.Abs(shimmy);
 
-        float arm = Mathf.Lerp(-hangArmRaise, 8f, progress);
-        float legBend = Mathf.Lerp(hangLegBend, 0f, progress) +
-                        mantleLegTuck * Mathf.Sin(progress * Mathf.PI);
+        float pull = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(progress / 0.45f));
+        float knee = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((progress - 0.25f) / 0.4f));
+        float stand = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((progress - 0.6f) / 0.4f));
+
+        float arm = Mathf.Lerp(-hangArmRaise, -hangArmPress, pull);
+        arm = Mathf.Lerp(arm, 8f, stand);
+        float angleR = Mathf.Lerp(hangLegBend, mantleKneeSwing, knee);
+        angleR = Mathf.Lerp(angleR, 0f, stand);
+        float angleL = Mathf.Lerp(hangLegBend, mantleKneeOtherSwing, knee);
+        angleL = Mathf.Lerp(angleL, 0f, stand);
 
         if (armL != null) armL.localRotation = Quaternion.Euler(arm + sway, 0f, 0f);
         if (armR != null) armR.localRotation = Quaternion.Euler(arm - sway, 0f, 0f);
-        if (legL != null) legL.localRotation = Quaternion.Euler(legBend + sway * 0.4f, 0f, 0f);
-        if (legR != null) legR.localRotation = Quaternion.Euler(legBend - sway * 0.4f, 0f, 0f);
+        if (legL != null) legL.localRotation = Quaternion.Euler(angleL + sway * 0.4f, 0f, 0f);
+        if (legR != null) legR.localRotation = Quaternion.Euler(angleR - sway * 0.4f, 0f, 0f);
 
         hips.localRotation = Quaternion.identity;
-        hips.localPosition = baseHipsPos + Vector3.up * (Mathf.Abs(shimmy) * 0.01f);
-        if (body != null) body.localRotation = Quaternion.Euler(hangBodyLean * (1f - progress), 0f, 0f);
+        hips.localPosition = baseHipsPos + Vector3.up * (0.04f * knee) +
+                             Vector3.up * (Mathf.Abs(shimmy) * 0.01f);
+        if (body != null)
+        {
+            float lean = Mathf.Lerp(hangBodyLean, mantleBodyLean, knee);
+            lean = Mathf.Lerp(lean, 0f, stand);
+            body.localRotation = Quaternion.Euler(lean, 0f, 0f);
+        }
         if (head != null) head.localRotation = Quaternion.Euler(-25f * (1f - progress), 0f, 0f);
     }
 
